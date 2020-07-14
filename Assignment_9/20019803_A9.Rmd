@@ -1,0 +1,89 @@
+---
+title: "20019803_A9"
+author: "Kai Ellis"
+date: "April 5, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggfortify)
+library(smatr)
+```
+
+
+(1) State your predictions about how the intercepts and slopes of the regression of brain size on body size should differ among the three mammalian orders. You DO NOT have to go to the literature to determine what the correct prediction is, simply state predictions that make sense to you and explain your reasoning in 1 or 2 brief sentences in the text section of your R notebook.
+
+  I predict that across all three mammalian orders we will see no significant variation in slope. I suspect that the rate of change in brain to body mass ratio is roughly consistant, as brains tend to be rather metabolically expensive organs whose evolution should be well conserved. However, I do suspect there will be changes in elevations (intercepts). I suspect the evolution of chiroptera towards the ability to fly will result in a higher brain to body mass ratio and thus a higher elevation, as their bodies will need to be less dense than those of the other orders to enable efficient flight. I belive we will also see a high intercept of brain to body mass ratios in primates as they need large brains to evolve traits like the use of tools and social structures. Carnivora I belive will have the widest range of brain to body mass ratios thanks to the wide variety of social stuctures and hunting stratigies used by its members, however i suspect the intercept will be lower than the other two orders.
+
+
+
+(2) Transform the data so that the regression lines describe proportional change in brain vs. body size. Because you’d like to compare intercepts among the three orders, you probably want to further transform on of the variables so that the intercepts make more sense. Brain size when body size = 0 doesn’t make a whole lot of sense. Can you transform body size to remedy this?
+```{r}
+summary(braindat <- read.csv("Brains-1.csv"))
+braindat <- braindat %>% mutate(logmass = log10(body_mass_g), logbrain = log10(brain_mass_g))
+braindat <- braindat %>% mutate(posmass = I(logmass-mean(logmass)))
+lm(logbrain~posmass*order, data = braindat) #there we go, intercepts are greater than 1
+```
+
+
+(3) Before you launch into analysis, make an “exploratory” plot of the data (using different colours and symbols for each order, of course). The regression lines you plot on this graph don’t have to be model II nor do you need to make a caption for this figure. Do you foresee any problems with comparing slopes and elevations among these three mammalian orders?
+```{r}
+ggplot(braindat, aes(x = posmass,y = logbrain))+
+  geom_point(aes(colour = order),size = 5, alpha = 0.4) +
+  geom_smooth(aes(group = order, colour = order),lwd = 1)
+
+```
+Slopes and elevations may be a little hard to compare for this data based on the way it has clustered.  Both primates and Chroptera appear to have clustered well and generated reasonable lms, however Carnivora has clustered in two distinct groups near the top which seem to have slightly different slopes (see the kink in the geom smooth line for the differnence in slopes). This may result in a carnivora slope and intercept takes the middle ground between these two clusters, working well for neither and generating a false positive significant result when compared to the other two orders.
+
+
+(4) What are the two main approaches to model II regression that we discussed in lecture? Which do
+you think is appropriate for these data? Answer this question in the text of your R notebook.
+
+We discussed the use of the MA and SMA model II regressions. I belive that MA is the more reasonable approach for these data as both body mass and brain mass were measured in the same way and thus, should have similar errors. If the two variables had been different measurements say body mass and brain volume, SMA would have been the better of the two approaches.
+
+(5) Using your chosen model II method, test whether the slopes of the regression of brain size on body size differ among the three mammalian orders. Use multiple comparisons to determine which pairwise differences between orders are significant. Describe the results with respect to your predictions stated above. Your conclusion should reflect any misgivings you have about this analysis.
+```{r}
+slopes.mc <- sma(logbrain~posmass*order, multcomp = TRUE , multcompmethod = "adjusted", data= braindat)
+summary(slopes.mc)
+
+```
+There is a significant difference in slope between carnivora and the other two orders, with no significant difference between chiroptera and primates. This differs from my prediction that there would be no diffrerence in slopes across the three orders. It is worth noting that the carnivora data did appear to separate into two distinct groups in the exploritory plot we made earlier, the difference in slope we see for it may not actually be significant, but rather created by an best fit slope for the two distinct clusters. It would be interesting to separate these two clusters into their own groups and examine if thier individual slopes are identical to those of chiroptera and primates.
+
+(6) Now, test whether the elevations of the regression differ among orders. While considering this question, take a close look at the output from the test of variation in slopes and the test of variation in elevations. If you find a significant difference in slopes, how does that  change your interpretation of the variation in elevations? Answer this question in the text of your R notebook.
+
+
+
+```{r}
+eleves.mc <- sma(logbrain~posmass*order, multcomp = TRUE , type = "elevation", multcompmethod = "adjusted", data= braindat)
+summary(eleves.mc)
+```
+There is a significant difference in elevation between carnivora and the other two orders, with no significant difference between chiroptera and primates. This matches my prediction, however it is worth noting that there is a significant difference in the slopes between carnivora and the other two orders, which could be causing the difference in intercept. This is further exasterbated by the fact that carnivora has no points near the intercept and needs to be extrapolated well beyond the actual data set to find the intercept.
+
+(7) Pick the model you feel is most appropriate (i.e.the MAM) and graph the data with the model II regression lines from the MAM. Lines for all orders should be plotted on the same graph. This should be a publication quality figure with a caption, which indicate the results of multiple comparisons between orders.
+```{r}
+
+es <- slopes.mc$groupsummary
+rlines <- data.frame(class= c("Carnivora","Chiroptera", "Primates"), slopes = c(es[1,5],es[2,5],es[3,5]), intercepts = c(es[1,8],es[2,8],es[3,8]))
+minmax <- braindat %>% group_by(order) %>% summarise(x = min(posmass), xend = max(posmass))
+rlines2 <- data.frame(rlines, minmax)
+rlines3 <- rlines2 %>% mutate(y = intercepts + x*slopes,
+                              yend = intercepts + xend*slopes)
+
+
+ggplot(braindat, aes(x = posmass,y = logbrain))+
+  geom_point(aes(colour = order),size = 5, alpha = 0.4) +
+  geom_segment(data = rlines3, aes(x = x, xend = xend, y = y, yend = yend, colour = class), lwd = 1) +
+  labs(x =expression(paste("Body mass", " (",log[10],")" )) , y =expression(paste("Brain mass", " (",log[10],")" ))) +
+  theme_minimal()
+
+
+
+```
+
+Figure 1. Body mass plotted against brain mass for 178 species from the orders Carnivora (red), Chiroptera (green), and Primates (blue). There was no significant difference in the brain/body mass slope or intercept found between Chiroptera and Primates, but a signifcant difference was found between the previously mentioned two orders and Carnivora. Carnivora was found to have a significantly smaller slope and intercept than the other two orders.

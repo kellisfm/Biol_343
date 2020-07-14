@@ -1,0 +1,231 @@
+---
+title: "20019803_A5"
+author: "Kai Ellis"
+date: "February 12, 2020"
+output: html_document
+---
+```{r, message=FALSE, error=FALSE, message=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggpubr)
+library(ggfortify)
+library(car)
+
+```
+*Note:* I am using ggpubr for making the composite plot rather than cowplot. Cowplot's installation was giving me alot of problems, and ggpubr's ggarrange function proved intuitive for creating composite graphs. 
+
+```{r}
+birdDat <- read.csv("/Users/kelli/Desktop/Biol343/Assignment_5/BirdsInForestPatches.csv")
+#this column had a bugged name, fixed it
+names(birdDat)[names(birdDat)=="ï..abundance"] <- "abundance"
+```
+
+1. The first step in any analysis is to get to know the data by running the summary() function.
+```{r, message=FALSE, error=FALSE, message=FALSE}
+summary(birdDat)
+```
+
+
+2. It is probably a good idea to deal with the yr_isol variable which is the year each fragment was isolated. The study was conducted in 1985, so you can convert yr_isol to the number of years the fragment was isolated before the data were collected (nyrs_isol).
+```{r}
+birdDat <- birdDat %>%  mutate(nyrs_isol = 1985-yr_isol)
+```
+
+
+3. Next, plot the distribution of all the variables using histograms. Because you will make the same type of plot over and over again, you can avoid code-bloat by only writing down the code for the analysis once and switching up the variable under examination. For instance, you can define a new variable as one of the variables under examination: birdsvarb <- birds area_ha and simply run the code that refers to varb and then switch varb to the next variable in line. As a result, we only want to a see one chunk of multi-purpose code a sample histogram for one of the variables. This figure can be utilitarian and does not need formal axis labels or a figure caption.
+
+```{r}
+ggplot(gather(birdDat), aes(value)) + 
+    geom_histogram() + 
+    facet_wrap(~key, scales = "free_x")
+```
+
+4. Although the predictor variables do not have to be normally distributed. It’s a good idea to
+transform variables that are obviously log-normal. In the text part of your notebook describe
+any transformations that you think are good to do.
+
+
+  Log(10) transformations are performed to reduce skew. Based on the above histograms I performed log transformations on the area_ha, dist_large_km, nyears, and dist_nearest_km variables. These variables were all highly left skewed and were in need of an adjustment. None of the variables had points equivalent to 0 (see question 1.), thus I did not add 1 to any before log transforming.
+
+
+5. Follow this by a code chunk transforming the appropriate variables and the selecting only
+those columns from the dataframe that will go on to the next stage of analysis.
+```{r}
+birdDat <- birdDat %>% mutate(logArea = log10(area_ha),
+                              logLarge = log10(dist_large_km),
+                              logYears = log10(nyrs_isol),
+                              logNear = log10(dist_nearest_km))
+selBirdDat <- birdDat %>% select(abundance,logArea,logYears,logNear,logLarge, grazing, altitude_masl)
+```
+
+
+6. Next comes the univariate analyses. Regress abundance over each of the 6 potential predictor
+variables. Put these 6 univariate scatterplots in a single composite plot, with axes labeled
+appropriately and all axes aligned properly. Only put regression lines on plots when the
+relation with abundance is significant. There’s a bunch of different ways of doing this in R, but
+I recommend checking out plot_grid() in the cowplot package. Make this graph as professional and thoughtfully laid out as possible. All axes of the individual graph panels must be tweaked and properly labelled (or de-labelled) using the scale_ functions, and the style of the graph should be modified with the theme() function. Include a suitable-for publication figure caption
+```{r}
+summary(selBirdDat)
+#pairs(selBirdDat)
+#cor(selBirdDat)
+la.a <- ggplot(selBirdDat, aes(x = logArea, y = abundance)) + 
+  geom_point(size = 3) + 
+  geom_smooth(method = "lm", se = F) +
+  scale_x_continuous (name = expression(paste("Fragment area (ha)"," (",log[10],")" ))) +
+  scale_y_continuous (name ="Abundance") +
+  theme_minimal()
+ly.a <- ggplot(selBirdDat, aes(x = logYears, y = abundance)) + 
+  geom_point(size = 3) + 
+  geom_smooth(method = "lm", se = F) +
+  scale_x_continuous (name =expression(paste("Years isolated"," (",log[10],")"))) +
+  scale_y_continuous (name ="") +
+  theme_minimal()
+ln.a <- ggplot(selBirdDat, aes(x = logNear, y = abundance)) + 
+  geom_point(size = 3) + 
+  scale_x_continuous (name = expression(paste("Nearest fragment (km)"," (",log[10],")" ))) +
+  scale_y_continuous (name ="") +
+  theme_minimal()
+ll.a <- ggplot(selBirdDat, aes(x = logLarge, y = abundance)) + 
+  geom_point(size = 3) + 
+  scale_x_continuous (name =expression(paste("Nearest large fragment (km)"," (",log[10],")" ))) +
+  scale_y_continuous (name ="Abundance") +
+  theme_minimal()
+g.a <- ggplot(selBirdDat, aes(x = grazing, y = abundance)) + 
+  geom_point(size = 3) + 
+  geom_smooth(method = "lm", se = F) +
+  scale_x_continuous (name ="Grazing intensity") +
+  scale_y_continuous (name ="") +
+  theme_minimal()
+am.a <- ggplot(selBirdDat, aes(x = altitude_masl, y = abundance)) + 
+  geom_point(size = 3) + 
+  geom_smooth(method = "lm", se = F) +
+  scale_x_continuous (name ="Altitude (MASL)") +
+  scale_y_continuous (name ="") +
+  theme_minimal()
+
+ggarrange(la.a, ly.a, ln.a, ll.a, g.a, am.a,
+          ncol=3, nrow=2,
+          labels =  c("A","B","C","D", "E","F"))
+
+rm(la.a, ly.a, ln.a, ll.a, g.a, am.a)
+# I use the rm command alot to remove variables. It doesnt impact the output of anything, I just don't like them clogging up the little window on the side of R studio.
+```
+Figure 1. All predictive variables graphed against the abundance of forest birds across 56 woodland fragments. Four variables (woodland fragment area in hectares (A), years since the fragment was isolated (B), intensity of grazing in the fragment (E), and the fragment's altitude in meters abouve sea level (F) ) were found to have a significant relation with abundance; regression lines for these variables have been plotted in blue. Two variables (distance to nearest fragment (C) or large fragment(D), both in kilometers) were found to possess no significant relation with woodland bird abundance. 
+
+7/8. Evaluate the significance of each regression using the lm() function. Again this requires
+repetitive analyses so use the code-reduction strategy suggested above. We only need to see
+one chunk of multi-purpose code for one of the predictors. For each predictor use graphical analysis (a single function) to verify that the data fit the assumptions of regression. Again, use the code reduction strategy. We only need to see one chunk of multi-purpose code.
+```{r}
+
+summary(varbmod <- lm(abundance~altitude_masl, data = birdDat))
+
+autoplot(varbmod,c(2,3))
+
+rm(varbmod)
+```
+
+
+9. In a section of text, summarize the results of all the analyses that you did in #6, 7 & 8.
+
+  It was found that four predictive variables had significant relations with abundance: altitude (p = 0.00332), grazing(p = 6.9e-09), years(p = 0.000174), and area (p = 7.18e-11). Meanwhile, neither dist_nearest_km (p = 0.352) or dist_large_km (p = 0.38) had a significant correlation with abundance.
+  Based upon normal Q-Q plots, all predictive variables appeared to have relatively normal distributions of their residuals (Assumption 1 of a linear model). There were minor differences from the predicted values near the extremes, but this is not uncommon for biological data.
+  Assumption 2 of linear model generation, that the variables are independant, also appeared to be met for most predictive variables.Scale-location plots showed little in the way of general trends, except for between abundance and the altitude and area predictive variables. While graphs for these two variables appeared to show a general trend towards an extreme, I am unable to reject the null hypothesis that they meet the second assumption as no statistical testing was performed.
+
+
+10. Now you will take all the predictors that have a significant relation with abundance and, using lm(), put them in a multiple regression model to explain abundance. This is not really how
+we build a multiple regression model but it will have to do until we learn model selection.
+```{r}
+summary(fullPred <- lm(abundance~logArea + logYears + grazing + altitude_masl, data = selBirdDat))
+
+
+```
+
+
+11. Use pairs() and cor() to evaluate the extent to which the predictors in #10 are intercorrelated (i.e. colinear).
+```{r}
+selBirdDat <- birdDat %>% select(logArea,logYears, grazing, altitude_masl)
+pairs(selBirdDat)
+cor(selBirdDat)
+```
+
+
+12. In a section of text describe how the r2 of the multiple regression model compares to the r2
+values of the univariate regressions involving the same predictors.
+
+The R2 value of the multiple regression model is far lower than the sum of the R2 values of the respective univariate regressions (0.6781<<< r2 altitude 0.1489 + r2 years 0.2316 + r2 area 0.5477 + r2 grazing 0.4658.) This means that while the multiple regression has greater predictive power than any one regression, it is far less than it would be if none of the variables were correlated. This correlation between variables can be seen in #11, where correlation coefficients range between a low of ~ |0.25|, and a high of ~|0.63|.
+
+13. Again, use a one-function graphical analysis to evaluate whether the assumptions of multiple
+regression are met.
+```{r}
+autoplot(fullPred,c(2,3))
+#A1 and A2 are a little sketchy, although without doing a proper f-test or shapiro I can't say they're broken
+```
+  We once again must conclude the assumptions of normality and independance of residuals to be met for this multiple linear model. While there is some oddities towards the extreme ends of both the normal Q-Q and Scale-Location graphs, there is no general trend away from the predicted values.
+
+14. Use ggplot to make an added-variable (AV) plot for each predictor and put these graphs in a
+composite plot as above (#6). The first step is to calculate the appropriate x-axis and y-axis
+residuals for each predictor.
+```{r}
+selBirdDat <- birdDat %>% select(abundance, logArea,logYears, grazing, altitude_masl)
+#y axis
+A_y.g.a <- residuals(lm(abundance ~ logYears + grazing + altitude_masl, data = selBirdDat))
+A_l.g.a <- residuals(lm(abundance ~ logArea + grazing + altitude_masl, data = selBirdDat))
+A_l.y.a <- residuals(lm(abundance ~ logArea + logYears + altitude_masl, data = selBirdDat))
+A_l.g.y <- residuals(lm(abundance ~ logArea + grazing + logYears, data = selBirdDat))
+
+#x axis residuals
+l_y.g.a <- residuals(lm(logArea ~ logYears + grazing + altitude_masl, data = selBirdDat))
+y_l.g.a <- residuals(lm(logYears ~ logArea + grazing + altitude_masl, data = selBirdDat))
+g_l.y.a <- residuals(lm(grazing ~ logArea + logYears + altitude_masl, data = selBirdDat))
+a_l.g.y <- residuals(lm(altitude_masl ~ logArea + grazing + logYears, data = selBirdDat))
+
+datf <- data.frame(A_y.g.a,
+                   A_l.g.a,
+                   A_l.y.a,
+                   A_l.g.y,
+                   l_y.g.a,
+                   y_l.g.a,
+                   g_l.y.a,
+                   a_l.g.y )
+
+rm(A_y.g.a, A_l.g.a,A_l.y.a, A_l.g.y, l_y.g.a,y_l.g.a,g_l.y.a,a_l.g.y )
+
+```
+
+15. The second step is to make the AV plots and put them together in a composite plot using
+plot_grid(). This figure should also be beautiful and include a figure caption.
+```{r}
+
+area <- ggplot(datf, aes(x=l_y.g.a, y=A_y.g.a)) +
+  geom_point() +
+  geom_smooth(method= "lm",se=T) +
+  theme_minimal() +
+  scale_y_continuous (name ="Abundance | Others") +
+  scale_x_continuous (name ="Fragment area (ha) | Others")
+
+years <- ggplot(datf, aes(x=y_l.g.a, y=A_l.g.a)) +
+  geom_point() +
+  geom_smooth(method= "lm",se=T) +
+  theme_minimal() +
+  scale_y_continuous (name ="") +
+  scale_x_continuous (name ="Years isolated | Others")
+
+grazing <- ggplot(datf, aes(x=g_l.y.a, y=A_l.y.a)) +
+  geom_point() +
+  geom_smooth(method= "lm",se=T) +
+  theme_minimal() +
+  scale_y_continuous (name ="Abundance | Others") +
+  scale_x_continuous (name ="Grazing | Others")
+
+altitude <- ggplot(datf, aes(x=a_l.g.y, y=A_l.g.y)) +
+  geom_point() +
+  geom_smooth(method= "lm",se=T) +
+  theme_minimal() +
+  scale_y_continuous (name ="") +
+  scale_x_continuous (name ="Altitude (MASL) | Others")
+
+ggarrange(area,years,grazing,altitude, labels =  c("A","B","C","D"))
+rm(area, years, grazing, altitude )
+```
+Figure 2. Added variable plots for all significant predictive variables. The four plots show the relationship between the response variable, abundance, and the predictive variables woodland fragment area in hectares (A), years since the fragment was isolated (B), intensity of grazing in the fragment (C), and the fragment's altitude in meters abouve sea level (D). Variables not being tested were controlled for.

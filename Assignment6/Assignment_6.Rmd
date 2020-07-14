@@ -1,0 +1,225 @@
+---
+title: "Assignment_6"
+author: "Kai Ellis"
+date: "March 6, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggpubr)
+library(ggfortify)
+library(car)
+```
+(1) The data are in: BirdsInForestPatches.csv, and recall from the last assignment that you log10- transformed fragment area, distance to nearest forest patch and distance to largest forest patch. You’ll those log10-transformed predictors again here.
+```{r}
+birdDat <- read.csv("/Users/kelli/Desktop/Biol343/Assignment6/BirdsInForestPatches.csv")
+
+summary(birdDat)
+
+birdDat <- birdDat %>% mutate(logArea = log10(area_ha),
+                              logLarge = log10(dist_large_km),
+                              logNear = log10(dist_nearest_km),
+                              nyrs_isol = 1985-yr_isol)
+
+#this column had a bugged name, fixed it
+names(birdDat)[names(birdDat)=="ï..abundance"] <- "abundance"
+
+
+```
+
+
+(2) Perform backwards selection using the protocol we developed in lecture. Start with the full model and eliminate one predictor at a time chosen as the predictor with the highest P value from an analysis using car::Anova(). Larger and smaller models should be compared using likelihood-ratio tests implemented with anova().
+```{r}
+full <- lm(abundance~ grazing + altitude_masl + logArea + logLarge + logNear + nyrs_isol ,
+                   data = birdDat) 
+
+Anova(full) #logLarge largest P value at 0.76
+
+noLarge <- lm(abundance~ grazing + altitude_masl + logArea + logNear + nyrs_isol ,data =
+                        birdDat)
+
+anova(full, noLarge) #no sig p, keep going
+
+
+Anova(noLarge) #logLarge largest P value at 0.576
+
+noNear <- lm(abundance~ grazing + altitude_masl + logArea  + nyrs_isol ,data =
+                        birdDat)
+
+anova( noLarge, noNear)#no sig p, keep going
+
+Anova(noNear) #altitude_masl largest p at 0.231
+
+noAlt <- lm(abundance~ grazing + logArea  + nyrs_isol ,data =
+                        birdDat)
+
+anova(noNear, noAlt)#no sig p, keep going
+
+Anova(noAlt) #nyrs_isol largest p at 0.0768
+
+noIsol <- lm(abundance~ grazing + logArea ,data = birdDat)
+
+anova(noAlt, noIsol) #no sig p, keep going
+
+Anova(noIsol) #grazing largest p at 0.0001946, probably gonna stop with noIsol but I'll test anyway.
+
+noGraze <- lm(abundance~ logArea ,data =
+                        birdDat)
+
+anova(noIsol,noGraze) #sig P, noIsol is MAM
+
+rm(noAlt, noGraze, noLarge, noNear) #remove all non-full or MAM models to clean up the global enviroment
+```
+
+(3) Once you’ve arrived at the MAM, see if you get the same model using forward selection implemented by the add1() function.
+```{r}
+null <- lm(abundance~1, data=birdDat)
+add1(null,scope = ~grazing + altitude_masl + logArea + logLarge + logNear + nyrs_isol, test = "F") #logArea has lowest p value, add it to the model 
+add1(update(null,~.+logArea), scope = ~ grazing + altitude_masl + logArea + logLarge + logNear + nyrs_isol, test = "F")
+#grazing has lowest p value, add it to the model 
+add1(update(null,~.+logArea + grazing), scope = ~ grazing + altitude_masl + logArea + logLarge + logNear + nyrs_isol, test = "F") #no significant p values, stop at logArea+grazing
+
+```
+We arrived at the same MAM with both methods. MAM is abundance~area+grazing.
+
+
+(4) Once you have the MAM, check assumptions using a quick 1-function graphical analysis. No figure caption required here.
+```{r}
+autoplot(noIsol,c(1,2,3))
+```
+
+None of the assumptions appear to be violated as there are no consistant trends away from the expected values in the autoplots.
+
+
+(5) Determine the relative strength of the predictors in the model by rerunning it to calculate standardized partial regression coefficients.
+```{r}
+summary(smam <- lm(scale(abundance) ~ scale(grazing)+scale(logArea), data = birdDat))
+
+```
+
+
+(6) Make a formal graph that shows how well the data fit the MAM.
+```{r}
+birdDat <- birdDat %>% mutate(pred = fitted(noIsol)) 
+
+ggplot(birdDat)+
+  geom_point(aes(x=pred, y = abundance)) +
+  geom_abline(intercept = 0, slope = 1, colour = "blue") +
+  theme_minimal() +
+  scale_y_continuous (name ="Abundance") +
+  scale_x_continuous (name ="Predicted")
+```
+
+Figure 1. Abundance values vs abundance values predicted by the MAM of Abundance ~ logArea+grazing. Blue line is of formula y=1x+0, and represents a perfect match between predicted and actual abundance values.
+
+(7) Like backwards elimination, we begin model selection using AICc with a full model. Use the dredge() function to run all possible models and, for each, compute the log-likelihood, corrected AIC, DAIC, Akaike weight and r2. Express the regression parameters as standardized partial regression coefficients.
+```{r}
+options(na.action = "na.fail")
+dd <- MuMIn::dredge(full, extra = "R^2", beta = "sd")  
+print(dd, abbrev.names = F)
+
+
+```
+
+
+(8) What predictors are included in the “top model” and does this set of predictors differ from the MAM that you arrived at using backwards and forwards selection?
+
+The top model includes Grazing, logArea and nyrs_Isol, a different set of predictors from our forwards and backwards selection MAM.
+
+
+
+(9) A common convention is to consider all models with DAIC ≤ 2 to be statistically indistinguishable. Let’s consider how useful this criterion is in this case. Use ggplot to make a scatterplot with the rank of each model in terms of AICc on the x-axis (ranked from lowest AICc to highest) and DAIC on the y-axis. Plot a red horizontal line at DAIC = 2 to indicate how many other models you should consider along with the top model. This graph requires a figure caption, etc. In the text of your R notebook, interpret this graph. Do you see any obvious breakpoints in DAIC that separate models into likely vs. unlikely groups? Do any of these break points correspond to DAIC ≤ 2?
+```{r}
+ddr <- data.frame(model = seq(1:64), AICc = dd$AICc, delta = dd$delta,
+                  weight = dd$weight, evid.ratio = max(dd$weight)/dd$weight)
+
+ggplot(ddr)+
+  geom_point(aes(x = model, y = delta))+
+  geom_hline(yintercept = 2, colour = "red")+
+  theme_minimal() +
+  scale_y_continuous (name ="ΔAICc") +
+  scale_x_continuous (name ="Model")
+
+```
+
+Figure 2. All possible linear models from the Birds in forest patches data set ranked from lowest (left) DAICc to highest (right), where the lowest is the most likely model to predict abundance. The red line is set to a DAIcc threshold of 2, with all points below the line having explanitory power not significantly different from that of the "best" model. 
+
+
+This graph shows that while only the first 7 models are statistically identical, having DAICc values below 2, the first 20-24 are all relatively well grouped with no obvious rapid increases in AICc to separate them. The first debatably clear break in AICc is after model 20, while there is a definite clear break after model 24. This suggests that although we are only taking the models below the arbitrary value of 2 that is commonly accepted in stats, the first 20-24 are also worth keeping in mind
+
+
+(10) Given the DAIC ≤ 2 criterion, how many other potential models should you consider along with the top model? Among this set of models, how frequently is each predictor included? Do the standardized partial regression coefficients of included predictors change much from model to model? Briefly describe the relevant trends.
+
+6 other models should be considered along with our MAM. Logarea appears in all 7 of these models, grazing in 6, nyrs_isol in 5, logLarge and altitude_masl appear in 2 and finally logNear appears in a very lonely 1 model.Standardized partial regression coefficients do not change much for most predictors between models. Altitude ranges between 0.1 and 0.14, area between 0.52 and 0.61, large between -0.088 and -0.117. However both nyrs isol and grazing have relatively large ranges between -0.1654 and 0.2974, and between -0.21 and -0.39 respectively.
+
+General trends for standardized partial regression coeffecients are as follows: grazing seems to drop in explanitory power as more predictors are added to the model dropping from -0.39 in the grazing+logarea model down to -0.21 and -0.25 in both 4 predictor models. none of the other predictors seem to follow clear trends. nyrs seems to spike in explanitory power when altitude is added, and log area appears to on average increase in power when more predictors are added, but neither of these are clear cut.
+
+
+
+(11) Calculate evidence ratios for all potential models and interpret these values along with
+Akaike weights. How likely is it that the top model is the best model?
+```{r}
+(evid.ratio = max(dd$weight)/dd$weight)
+
+```
+
+the top value has an Akaike weight of 0.147, suggesting a 14.7% chance of being the best model. In terms of evidence ratios, the top 7 models have evidence ratios of 1, 1.59, 1.64, 2.09, 2.17, 2.21, and 2.4. As the evidence ratio is the weight of the top model/the weight of the model you are looking at this means the top model is 1.59x, 1.64x, 2.09x, etc. more likely to be the best model than the other models in the top 7.
+
+To summarize: the top model has an ~15% chance of being the best model and is ~1.6x more likely to be the best model then the 2nd best model.
+
+
+(12) Run this top model and use ggplot to create “added-variable” plots that show the partial
+relation between the response and each predictor. If there is more than one predictor, arrange
+all the plots together using plot_grid(). This is a formal graph requiring a figure caption, etc.
+```{r}
+selBirdDat <- birdDat %>% select(abundance, logArea,nyrs_isol, grazing)
+#y axis
+A_y.g <- residuals(lm(abundance ~ nyrs_isol + grazing,  data = selBirdDat))
+A_a.g <- residuals(lm(abundance ~ logArea + grazing, data = selBirdDat))
+A_a.y <- residuals(lm(abundance ~ logArea + nyrs_isol, data = selBirdDat))
+
+#x axis residuals
+a_y.g <- residuals(lm(logArea ~ nyrs_isol + grazing, data = selBirdDat))
+y_a.g <- residuals(lm(nyrs_isol ~ logArea + grazing, data = selBirdDat))
+g_a.y <- residuals(lm(grazing ~ logArea + nyrs_isol, data = selBirdDat))
+
+datf <- data.frame(A_y.g,
+                   A_a.g,
+                   A_a.y,
+                   a_y.g,
+                   y_a.g,
+                   g_a.y )
+
+rm(A_y.g, A_a.g, A_a.y, a_y.g, y_a.g, g_a.y )
+
+area <- ggplot(datf, aes(x=A_y.g, y=a_y.g)) +
+  geom_point() +
+  geom_smooth(method= "lm",se=T) +
+  theme_minimal() +
+  scale_y_continuous (name ="Abundance | Others") +
+  scale_x_continuous (name = expression(paste("Fragment area (ha)"," (",log[10],") | Others" )))
+
+years <- ggplot(datf, aes(x=A_a.g, y=y_a.g)) +
+  geom_point() +
+  geom_smooth(method= "lm",se=T) +
+  theme_minimal() +
+  scale_y_continuous (name ="") +
+  scale_x_continuous (name ="Years isolated | Others")
+
+grazing <- ggplot(datf, aes(x=A_a.y, y=g_a.y)) +
+  geom_point() +
+  geom_smooth(method= "lm",se=T) +
+  theme_minimal() +
+  scale_y_continuous (name ="Abundance | Others") +
+  scale_x_continuous (name ="Grazing | Others")
+
+
+ggarrange(area,years,grazing, labels =  c("A","B","C"))
+```
+
+Figure 3. Added variable plots for all significant predictive variables. The three plots show the relationship between the response variable, abundance, and the predictive variables woodland fragment area in hectares (A), years since the fragment was isolated (B), and intensity of grazing in the fragment (C). Variables not being tested were controlled for.
+
+(13) Make sure that all the formal graphs asked for above are beautifully rendered with complete and informative figure legends. You should upload your file to the Assignment #6 OnQ dropbox by Saturday 7 March 2020 at 1159pm. As before, please submit a PDF version of your .html R notebook document called "StudentNumber_A6.pdf", where the file name starts with your student number.

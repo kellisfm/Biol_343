@@ -1,0 +1,126 @@
+---
+title: "20019803_A3"
+output: html_notebook
+---
+
+
+Assignment:
+
+1) A code chunk loading the required packages.
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+
+```
+*Note:* I am using ggpubr for making the composite plot rather than cowplot. Cowplot's installation was giving me alot of problems, and ggpubr's ggarrange function proved intuitive for creating composite graphs. 
+
+
+2/3) import and check the data frame with the standard functions
+```{r}
+loosDat <- read.csv("/Users/kelli/Desktop/Biol343/Assignment_3/loosestrife.csv")
+
+summary(loosDat)
+head(loosDat)
+tail(loosDat)
+class(loosDat)
+dim(loosDat)
+```
+4) Code that plots the distribution of the main continuous variables, with which you can identify outliers or mistakes and you can assess whether any of the variables are log-normally distributed. Show only one example graph. No figure caption required
+
+
+```{r}
+loosDat <- loosDat %>% mutate(test = damage)
+
+ggplot(loosDat) + geom_histogram (aes(x=test, y = ..density..))+
+  theme_minimal()
+#ggplot(loosDat) + geom_histogram (aes(x=log10(1+test), y = ..density..)) +   theme_minimal()
+
+
+```
+
+5) A section of text summarizing what you've discovered about your data and any changes or transformations you decided to make.
+
+  There is a significant outlier in the infloresences data that is skewing the data and making it illegible on the histogram. This outlier will be removed.
+Additionally, as stem density is heavily skewed I've log transformed it to make it a more normally distributed dataset.
+Finally, I have created a new dataframe without the "other" region level. This will enable easier testing of hypothesis 1, which focuses specifically on the eastern and central regions, while maintaining the data from "other" regions for use in testing the other hypothesis.
+
+6. Code that creates transformed versions of any variables that require transformation, and makes any other necessary changes to the data.
+```{r}
+loosDat$inflorescences[which(loosDat$inflorescences>100)] = NA
+loosDat <- loosDat %>% mutate(logDense = log10(1 + stemdens))
+regDat <- loosDat %>%  filter(region != "Other") 
+```
+
+
+7. A plot that contrasts distributions of damage between regions. The plot code must include both scale and theme functions.
+
+```{r}
+ggplot(regDat) + geom_boxplot (aes(x=region, y= damage), position = "identity", alpha = 0.5) + scale_y_continuous(name = "Damage index") + scale_x_discrete(name ="Region") + theme_minimal() 
+
+```
+Figure 1. Damage index by site location in ontario. Site included were either found in the central or eastern regions of ontario. Scattered sites from other regions of the province have been omitted.
+
+8. Code and output that compares the mean and variability of damage between eastern and central regions. You should use the coefficient of variation as your measure of variability. This will require that you make your own function and use it in a set of piped dplyr functions. Please do not calculate summary statistics individually. You can calculate all of them at once using a single chain of dplyr commands using group_by() and summarise(). Remember: it is a virtue to write concise, compact code!
+
+```{r}
+cv <- function(i){
+  sd(i)/mean(i)*100
+}
+
+regDat %>% group_by(region) %>% summarise(n = sum(!is.na(damage)), mean = mean(damage, na.rm = T), cv = cv(damage))
+
+```
+
+
+9. A plot that contrasts the distribution of damage between release and nonrelease sites. This plot code must include both scale and theme functions.
+```{r}
+ggplot(loosDat) + geom_boxplot(aes(x=release, y=damage)) + theme_minimal() + scale_y_continuous(name = "Damage index") + scale_x_discrete(name ="Beetle release status")
+
+```
+Figure 2. Damage index distributions across sites where beetles were intentionally released and not-released.
+
+10. Code and output that compares the mean and variability of damage between release and nonrelease sites. See comments in task #8.
+```{r}
+loosDat %>% group_by(release) %>% summarise(n = sum(!is.na(damage)), mean = mean(damage, na.rm = T), cv = cv(damage))
+```
+
+
+11. A composite plot that explores whether damage index is related to the density of stems at a site and the aspects of plant growth form. Colour the points for release sites "blue" and nonrelease sites "red". Pass a simple linear regression line through these points. This plot code must include both scale and theme functions.
+```{r}
+den <- ggplot(loosDat, aes(y = logDense, x = damage)) + geom_point(aes(colour = release)) + scale_color_manual(breaks = c("Release", "Nonrelease"), values=c("red","blue")) + labs(x ="", y = expression(paste("Stems per ",m^2," (",log[10],")" )), colour = "")+
+  theme(axis.title.y= element_text(size = 9.5)) + geom_smooth(method = lm, se = FALSE) 
+
+hei <-  ggplot(loosDat, aes(y = stemheight_cm, x = damage)) + geom_point(aes(colour = release)) + scale_color_manual(breaks = c("Release", "Nonrelease"), values=c("red","blue")) + labs(x ="", y = "Stem height (cm)", colour = "") +
+  theme(axis.title.y= element_text(size = 9.5,vjust = 2, hjust = .5) ) + geom_smooth(method = lm, se = FALSE) 
+
+inf <- ggplot(loosDat, aes(y = inflorescences, x = damage)) + geom_point(aes(colour = release)) + scale_color_manual(breaks = c("Release", "Nonrelease"), values=c("red","blue")) +
+  theme(axis.title.y= element_text(size = 9.5)) + labs(x ="", y = "Inflorescences", colour = "") + geom_smooth(method = lm, se = FALSE) 
+
+ffigure <- ggarrange(den,hei,inf, ncol = 1, nrow = 3, common.legend = T)
+annotate_figure(ffigure,
+  bottom  = text_grob("Damage index", rot = 0, size = 9.5, vjust = -1.5))
+```
+Figure 3.
+Damage index plotted against (from top to bottom) stem density, stem height, and infloresences. Sites where beetles where intentionally released are highlighted in blue, while non-release sites appear in red. The blue line represents a general linear trend for each relationship.
+
+12. An interpretation of how the results support or fail to support the three hypotheses you are testing.
+Hypotheses:
+(1) Beetle damage index is lower and more variable in regions where the host plant is more
+sparsely distributed.
+(2) Damage index is higher and less variable at sites where the biocontrol agents was deliberately
+released than sites where they were not.
+(3) Damage by beetles reduces the local abundance and alters the growth form of L. salicaria.
+
+
+The data supports hypotheses 2, and partially supports 1 and 3. 
+
+Region data shows that there is no difference in mean across regions of high (eastern) or low (central) plant density (figure 1.) however, there does appear to be a reduction in damage variability in the more dense eastern region, providing some support to hypothesis 1.
+
+When damage is plotted against site release status (figure 2.) we observe an increase in the mean damage, and a reduction in the variance, supporting hypothesis 2.
+
+Finally, when damage is plotted against the aspects of plant growth (figure 3.) we can observe a negative correlation between damage and plant density. However, there appears to be little if any correlation between damage and the plant growth features height and infloresence number. This partially supports hypothesis 3, as beetle damage appears to induce a loss of plant density, however it seems to have little impact on the growth for of L. salicaria.
+
+
+13. Each figure requires a formal caption that fully describes the components of the figure so that your reader can understand it.

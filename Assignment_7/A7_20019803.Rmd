@@ -1,0 +1,151 @@
+---
+title: "20019803_A7"
+output: html_notebook
+---
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggpubr)
+library(ggfortify)
+library(car)
+```
+
+
+1. Code importing and checking the dataframe (no marks for this, you should be pros at this).
+```{r}
+myDa <-  read.csv("/Users/kelli/Desktop/Biol343/Assignment_7/mytilus.csv", fileEncoding="UTF-8-BOM")
+
+summary(myDa)
+
+```
+
+2. Report the reference of a reliable source indicating how variables like allele frequencies should be transformed, and apply this transformation to your data (using dplyr).
+
+Warton, David I., and Francis KC Hui. "The arcsine is asinine: the analysis of proportions in ecology." Ecology 92.1 (2011): 3-10.
+
+The above paper by Warton and Hui shows that when analyzing proportional data the logit transformation is the go to transformation over the traditionally popular arcsine transformation. They found coefficients of the logit transformation to be more readily interpretable, while the arcsine transformation lead to more problems in extrapolation beyond the fitted range.
+```{r}
+myDat <- myDa %>%  mutate(logit_94y = logit(lap94y_freq))
+
+summary(myDat)
+
+```
+
+3. Use lm() to fit linear, quadratic, cubic, quartic and null models to variation in transformed allele frequencies.
+```{r}
+myDat <- myDat %>%  mutate(miles_east_2 = (miles_east-mean(miles_east))^2,
+                           miles_east_3 = (miles_east-mean(miles_east))^3, 
+                           miles_east_4 = (miles_east-mean(miles_east))^4)
+
+
+
+null <- lm(logit_94y ~ 1, data = myDat)
+linear <- lm(logit_94y ~ miles_east, data = myDat)
+quadratic <- lm(logit_94y ~ miles_east + miles_east_2, data = myDat)
+cubic <- lm(logit_94y ~ miles_east + miles_east_2 + miles_east_3 , data = myDat)
+quartic <- lm(logit_94y ~ miles_east + miles_east_2 + miles_east_3 + miles_east_4, data = myDat)
+
+```
+
+4. Backwards selection to determine the MAM, plus interpretation of the results
+```{r}
+anova(quartic, cubic)
+anova(cubic, quadratic)
+
+```
+No significant difference in modeling power between quartic/cubic (p = 0.433), significant difference between cubic and quadratic (p= 0.0097) cubic is MAM.
+
+5. AICc-based model selection to determine the top model. Be careful because not all possible combinations of model terms are legitimate models on their own. You’ll have to do some research to figure out how to use AICc to evaluate different polynomial regression models. Make sure you calculate and interpret the Akaike weights and evidence ratios for all the models in the appropriate model set.
+
+The models ranked by AICc are as follows:
+1) cubic (AICc = 14.3,evid ratio = 5.21, weight = 0.134 )
+2) quartic (AICc = 18.3, evid ratio = 39.22, weight = 0.018)
+3) linear (AICc = 18.7, evid ratio = 46.1 , weight = 0.011)
+4) quadratic (AICc = 19.3, evid ratio = 61.7 , weight = 0.003)
+
+AICc based model selection determines cubic to be the best model 13.4% of the time, having an AICc value 4 points lower than the next best model (quartic). Linear is 3.22x more powerful than the next best model, and 154x more effective than the least powerful model (quartic).
+```{r}
+library(MuMIn)
+options(na.action = "na.fail")
+(dd <-dredge(quartic, extra = "R^2", beta = "sd") )
+(evid.ratio = max(dd$weight)/dd$weight)
+```
+
+6. Did likelihood-ratio tests and AICc lead you to the same MAM?
+
+Both tests identified the cubic model model (logit_94y ~ miles_east + miles_east_2 + miles_east_3) as the MAM.
+
+7. Publication-quality graph + caption illustrating geographic variation in allele frequency with the various regression models superimposed. Use colours to highlight the models indicated as the MAM by the two approaches to model selection.
+```{r}
+
+p1 = ggplot(myDat, aes(x = miles_east, y = logit_94y)) +
+  geom_point(size = 5) +
+  geom_smooth(method = lm, formula = y~poly(x,2), colour = "yellow", alpha = 0.2, se = F) +
+  geom_smooth(method = lm, formula = y~poly(x,3), colour = "green", alpha = 0.2, se = F) +
+  geom_smooth(method = lm, formula = y~poly(x,4), colour = "orange", alpha = 0.2, se = F) +
+  geom_smooth(method = lm, formula = y~x, alpha = 0.5,colour = "red", se = F) +
+  theme_minimal() +
+  labs(x = "Distance east of Southport CT (miles)", y = "Proportional frequency of the 94y allele (logit)")
+p1
+```
+
+Figure 1. Proportional frequency of the 94y allele (logit transformed), by distance east of Southport CT. Plotted overtop of the data are four models: cubic (green) was found to be the MAM from both backwards selection and likelyhood ratio tests, linear (yellow), quadratic (orange), and quartic models (red) are also plotted.
+
+8. Comparison of how transformed vs. untransformed data meet model assumptions and how transformation influences statistical results. You’ll want to see how transformation affected your choice of MAM, how it affected the analysis of residuals and whether it tamed particularly influential data points. In the end you’ll have to state whether the data transformation is appropriate.
+
+Both transformed and untransformed data resulted in the cubic linear model becoming the MAM. Transforming the data resulted in limited impact on the assumptions. Assumption 1 (normality) was a bit better in the transformed data, but assumption 2 actually appeared to be worse in the transformed data. The transformation appeared to make very little impact on the graphing of the linear model, and totally failed to reign in influential points, actually making them worse (see next question).
+
+This transformation of the data did not accomplish all our objectives of reigning in influential data, and improving assumptions, therefore it was not appropriate.
+```{r}
+library(ggpubr)
+
+nullut <- lm(lap94y_freq ~ 1, data = myDat)
+linearut <- lm(lap94y_freq ~ miles_east, data = myDat)
+quadraticut <- lm(lap94y_freq ~ miles_east + miles_east_2, data = myDat)
+cubicut <- lm(lap94y_freq ~ miles_east + miles_east_2 + miles_east_3 , data = myDat)
+quarticut <- lm(lap94y_freq ~ miles_east + miles_east_2 + miles_east_3 + miles_east_4, data = myDat)
+
+#testing for MAM
+anova(quarticut, cubicut)
+anova(cubicut, quadraticut)
+anova(quadraticut, linearut)
+anova(linearut, nullut)
+
+(dd <-dredge(quarticut, extra = "R^2", beta = "sd") )
+(evid.ratio = max(dd$weight)/dd$weight)
+
+
+#testing assumptions for both glms
+autoplot(cubic, c(2,3))
+autoplot(cubicut, c(2,3))
+
+p2 <- ggplot(myDa, aes(x = miles_east, y = lap94y_freq)) +
+  geom_point(size = 5) +
+  geom_smooth(method = lm, formula = y~poly(x,2), colour = "yellow", alpha = 0.2, se = F) +
+  geom_smooth(method = lm, formula = y~poly(x,3), colour = "orange", alpha = 0.2, se = F) +
+  geom_smooth(method = lm, formula = y~poly(x,4), colour = "red", alpha = 0.2, se = F) +
+  geom_smooth(method = lm, formula = y~x, alpha = 0.5,colour = "green", se = F) +
+  theme_minimal() +
+  labs(x = "Distance east of Southport CT (miles)", y = "Proportional frequency of the 94y allele")
+ ggarrange(p1,p2, ncol = 1, nrow = 2)
+
+```
+
+9. If you find an influential data point, then identify it and explore how its inclusion in the data affects the results and conclusions.
+```{r}
+rs <- data.frame(rstudent(cubic))
+ggplot(rs, aes(x= as.numeric(row.names(rs)), y = rstudent.cubic.)) +
+  geom_text(aes(label=rownames(rs)))+
+  geom_smooth(method = lm)
+outlierTest(cubic)
+influenceIndexPlot(cubic)
+influenceIndexPlot(cubicut)
+
+
+```
+The most influential data points in the set are points 1 and 7. Point one has a cooks distance of about 2 (significant influence on the linear model) and a hat value of about 0.8. This hat value suggests that the point is quite far from the predicted values and that the graph will shift significantly if data point 1 is dropped from the model. Meanwhile 7 is the closest to a significant p-value, having an uncorrected p-value of 0.05
+
+10. Figuring out points 8 and 9 might require a bit of supplemental graphical analysis. If so, you don’t have to provide formal captions for these graphs but the graphs do have to appear in your R Notebook.

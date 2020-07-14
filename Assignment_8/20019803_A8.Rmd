@@ -1,0 +1,253 @@
+---
+title: "A8_20019803"
+author: "Kai Ellis"
+date: "March 27, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. A text section at the beginning of your R notebook describing the experiment and its goals.
+
+This study will be examining the impact on toxic chemical pollutants on reproductive success in the  ganges river dolpin *Platanista gangetica*, a species that is nearly blind and inhabits the heavily polluted ganges river. As the apex predator of thier ecosystem *Platanista gangetica* has been identified as a sufferer of heavy bioaccumulation from it's diet and enviroment. This study will be evaluating the impact of two of these chemicals: Dichlorodiphenyltrichloroethane (DDT), and Hexachlorocyclohexane (HCH) on the number of calfs successfully raised per mother over a 10 year period. These chemicals may seem like a dated choice, as both have been banned from most countries for the past two decades. However, india remains the only country in the world using DDT and one of 5 using HCH. Chemical concentrations will be measured from blubber samples, while reproductive success will be the number of calves succefully weaned from a mother over a 10 year period. Dolphins will be sampled from six areas in their range, which is devided by a series of hydroelectric damns. These areas are known to have different quantities of chemical toxins, with the toxin concentration increasing further down the water.
+
+```{r}
+
+library(car)
+
+library(tidyverse)
+```
+
+2. Code setting up the design of the experiment.
+
+```{r}
+levels_ddt <- 3 #ddt subdevided into low, medium and high concentrations (0-10000 ng/g, 11000-30000 ng/g, and 31000-60000 ng/g)
+levels_hch <- 2 #hch subdevided into low and high concentrations (0-1000 ng/g, and 1001-2000 ng/g)
+n_per_treatment <- 25 #150 total dolphins. Chosen as most surveys of the river find between 400-800 dolphin, finding 150 mothers spead across the river should be reasonable.
+gmean_rs <- 1.6 #Reproductive data taken from the listed paper
+sres_rs <- 0.96
+total_n <- levels_ddt*levels_hch*n_per_treatment
+
+ds <- matrix(c(rep(as.integer(total_n/(levels_hch*levels_ddt)),
+               levels_hch*levels_ddt)),nrow = 2)
+
+
+
+```
+
+3. Code specifying the statistical properties of the biological system you are simulating plus the
+effect sizes for both factors and their interaction. Describe the interaction in words in the text
+below this code.
+```{r}
+hch.effect <- c(+0.10,-0.10)
+ddt.effect <- c(+0.15,0,-0.15)
+dxh.effect <- matrix(c(+0.06,+0.03,0,0,-0.03,-0.06), nrow = 2)
+
+```
+Values for the factors where chosen to be within the biological levels of 5-20%. HCH is known to be less toxic than DDT, so I have reflected that in the model. Dolphins with high HCH levels see a 12.5% reduction in reproductive success (difference of 0.2 over a gmean of 1.6), dolphins with high DDT levels see a 18% drop in reproductive success relative to low DDT and a 9% drop relative to medium DDT dolphins. The interaction was given a multiplicative interaction of 7.5% as these compounds have been shown to interact in vivo, producing additional toxic effects.
+
+Zhang, Yunbo, et al. "Interaction Effects between Organochlorine Pesticides and Isoflavones In Vitro and In Vivo." BioMed research international 2016 (2016).
+
+4. A full reference plus doi for a published study on which you based your values of gmean and
+sres.
+
+For information on toxin quantitites and reproductive success in river dolphins
+Sinha, Ravindra K., and Kurunthachalam Kannan. "Ganges River dolphin: an overview of biology, ecology, and conservation status in India." Ambio 43.8 (2014): 1029-1046.
+
+
+5. Code for a loop making the part of the results data.frame containing the predictor variables.
+```{r}
+ddt <- vector('numeric')
+hch <- vector('numeric')
+cnt <- 1
+for(i in 1:levels_hch){
+  for( j in 1:levels_ddt){
+    for(k in 1:ds[i,j]){
+      hch[cnt] <- i
+      ddt[cnt] <- j
+      cnt <- cnt+1
+      
+    }
+    
+  }
+  
+}
+pre <- data.frame(ddt = factor(ddt), hch = factor(hch))
+
+```
+
+
+6. Code for a loop drawing the data for the response variable from the appropriate normal
+distribution (the response variable should be added to the results data.frame).
+```{r}
+dat <- pre
+dat$rep <- rep(NA,length=length(dat$hch))
+
+for(i in 1:length(dat$rep)){
+  dat$rep[i] <- floor(rnorm(1,mean = gmean_rs +
+                          hch.effect[dat$hch[i]] +
+                          ddt.effect[dat$ddt[i]] +
+                          dxh.effect[dat$hch[i], dat$ddt[i]],
+                        sd = sres_rs) )
+  if (dat$rep[i]<0){
+    dat$rep[i]=0
+  }
+  else{
+    dat$rep[i]=dat$rep[i]
+  }
+}
+dat$hch <- factor(recode(dat$hch,`1` = "Low",
+                         `2` = "High"))
+dat$ddt <- factor(recode(dat$ddt,`1` = "Low",
+                         `2` = "Medium",
+                        `3` = "High"))
+dat
+```
+
+
+7. Code for an inner loop running through a large number of replicates for each parameter set
+(nreps).
+```{r}
+nreps  <- 1000
+p_hch <- rep(-50,nreps)
+p_ddt <- rep(-50,nreps)
+p_int <- rep(-50,nreps)
+
+for (i in 1:nreps){
+  datrep <- pre
+  datrep$rep <- rep(NA,length=length(datrep$hch))
+  for(j in 1:length(datrep$rep)){
+    datrep$rep[j] <- floor(rnorm(1,mean = gmean_rs +
+                          hch.effect[datrep$hch[j]] +
+                          ddt.effect[datrep$ddt[j]] +
+                          dxh.effect[datrep$hch[j], datrep$ddt[j]],
+                        sd = sres_rs) )
+    if (datrep$rep[j]<0){
+      datrep$rep[j]=0
+    }
+    else{
+    datrep$rep[j]=datrep$rep[j]
+    }# can't have less than 0 babies!
+  }
+  res <- Anova(lm(rep~ddt*hch,dat=datrep))
+  p_ddt[i] <- as.numeric(res$`Pr(>F)`[1]) 
+  p_hch[i] <- as.numeric(res$`Pr(>F)`[2])
+  p_int[i] <- as.numeric(res$`Pr(>F)`[3])
+}
+ddt_sig <- ifelse(p_ddt <= 0.05,1,0)
+hch_sig <- ifelse(p_hch <= 0.05,1,0)
+int_sig <- ifelse(p_int <= 0.05,1,0)
+sum(ddt_sig) #significant ~37% of the time
+sum(hch_sig) #significant ~26% of the time
+sum(int_sig) #significant ~5% of the time
+```
+ 
+
+8. Code for an outer loop running through at least 10 values of the parameter (total_n or sres)
+that you are examining.
+```{r}
+
+nreps  <- 1000
+sres_rs <- 1.2
+k = 1
+
+#we're gonna intialize three data frames for our predictors rather than three vectors to enable storage of all the data from our 10 runs in the same framework. This will enable easier analysis down the road.
+p_hch <- data.frame(1,2,3,4,5,6,7,8,9,10)
+p_ddt <- data.frame(1,2,3,4,5,6,7,8,9,10)
+p_int <- data.frame(1,2,3,4,5,6,7,8,9,10)
+
+#name the columns of each data frame based on the sres value they'll contain
+colnames(p_hch) <- c("hch_sres_1.2","hch_sres_1.1","hch_sres_1.0","hch_sres_0.9","hch_sres_0.8","hch_sres_0.7","hch_sres_0.6","hch_sres_0.5","hch_sres_0.4","hch_sres_0.3")
+colnames(p_ddt) <- c("ddt_sres_1.2","ddt_sres_1.1","ddt_sres_1.0","ddt_sres_0.9","ddt_sres_0.8","ddt_sres_0.7","ddt_sres_0.6","ddt_sres_0.5","ddt_sres_0.4","ddt_sres_0.3")
+colnames(p_int) <- c("int_sres_1.2","int_sres_1.1","int_sres_1.0","int_sres_0.9","int_sres_0.8","int_sres_0.7","int_sres_0.6","int_sres_0.5","int_sres_0.4","int_sres_0.3")
+
+while (k <= 10){
+  #this outer loop runs 10 times, as k starts at 1 and increases by 1 every cycle. 
+  #each cycle decreases the sres value by 0.1.
+  for (i in 1:nreps){
+    #The inner loop has been slightly modified to reflect the fact that we are using dataframes rather than vectors, thus requring two dimensions 
+    datrep <- pre
+    datrep$rep <- rep(NA,length=length(datrep$hch))
+    for(j in 1:length(datrep$rep)){
+      #the innermost loop used from the last question
+      datrep$rep[j] <- floor(rnorm(1,mean = gmean_rs +
+                            hch.effect[datrep$hch[j]] +
+                            ddt.effect[datrep$ddt[j]] +
+                            dxh.effect[datrep$hch[j], datrep$ddt[j]],
+                            sd = sres_rs) )
+      if (datrep$rep[j]<0){
+        datrep$rep[j]=0
+      }
+      else{
+      datrep$rep[j]=datrep$rep[j]
+      }# can't have less than 0 babies!
+    }
+    res <- Anova(lm(rep~ddt*hch,dat=datrep))
+    p_ddt[i,k] <- as.numeric(res$`Pr(>F)`[1]) 
+    p_hch[i,k] <- as.numeric(res$`Pr(>F)`[2])
+    p_int[i,k] <- as.numeric(res$`Pr(>F)`[3])
+  }
+sres_rs = sres_rs - 0.1
+k = k+1
+}
+
+
+```
+
+
+9. For each batch of simulated data, you will run the analysis of your experimental factors using
+lm() and collect the P values from applying the Anova() function to the resulting lm() object.
+
+
+10. With these P values, you should calculate, for each value of total_n or sres, the statistical power
+(frequency with which you reject the null hypothesis when it is false) for each term in the
+model.
+```{r}
+ddt_sig <- ifelse(p_ddt <= 0.05,1,0) #get significant p values
+hch_sig <- ifelse(p_hch <= 0.05,1,0)
+int_sig <- ifelse(p_int <= 0.05,1,0)
+
+(results.df <- data.frame(sres = sub(".*_","",names(colSums(ddt_sig))),DDT = (colSums(ddt_sig)/10), HCH = (colSums(hch_sig)/10), DDT_HCH_interaction = (colSums(int_sig)/10 )) )#add up all the 1's in each column and devide by 10 to get the percent of significant p values for each column. Order by predictor and sres
+results.df <- pivot_longer(results.df, -sres, names_to = "Predictor", values_to = "significant" )
+#data converted from wide to long format for easier analyis
+```
+
+11. Make a publication-quality figure (with appropriate caption) illustrating your results. You should plot the lines for all three effects (sex, pH, interaction) on the same graph and annotate the graph so we know which line is which.
+```{r}
+
+  pd <- position_dodge(width = 0.2)
+
+ggplot(data = results.df, aes(x = sres, y =significant, group = Predictor, colour = Predictor)) +
+  geom_point(size = 3, alpha = 0.75) +
+  geom_line() +
+  labs(x = "Residual standard deviation", y = "Statistical power") +
+  ylim(0,100) + 
+  theme_minimal()
+
+```
+
+
+Figure 1. Statistical power of chemical pollutants as predictors of mating success plotted against residual standard deviation in mating success. DDT appears in red, HCH in blue, and the DDTxHCH interaction appears in green.
+
+12. In a text section in your R notebook, interpret your results and describe how varying sample
+size (total_n) or trait variation (sres) affects frequency of statistical errors.
+
+Statistical power (frequency with which you reject the null hypothesis when it is false) decreases exponentially as trait variation (represented by sres) increases. With an sres of 0.3 the TII error rate of for the null hypothesis that DDT has no effect on mating success is 2.1%, while an sres of 1.2 results in a TII rate of 72%. The TII error rate for HCH follows dropping from 11.7% at sres 0.3 to 81.7% at sres 1.2. This is expected for values with a relatively strong true effect on the dolphin biology. At high sres values like 1.2, the effects are more likely to be lost in the noise, while at lower values like 0.3 we are consistantly able to see a strong signal attached to variance in the predictive variables.
+
+Interestingly the TII error rate of the interaction is approximately identical across Sres values, hovering around the 95% TII error rate region for the range of sres 1.2-0.4. The interaction does sees a small bump at 0.3, jumping to a TII error rate of ~90%. This is strikingly low for a value that has a true impact on fish reproductive rates as it never really moves away the 5% area, which is the T1 error rate for a predictive variable with no true impact. This dissimilarity in power from a negative control may be explained by two factors: the relatively high sres values tested, and the high degrees of freedom found in the interaction relative to the individual predictors. 
+First, the high sres: the lowest sres tested was 0.3, or about 30% variance relative to the gmean of 1.6, this high variance may have been enough to drown out the relatively small 7.5% multiplicative impact of the interaction. The reason my lowest sres value was so high was due to the nature of my response variable, it's hard to track dolphin pods over a 10 year peroid with the goal of measuring reproductive success which ultimatly leads to low sample sizes and high variance.
+
+Second, the higher degree of freedom: As the interaction is a multifactor linear model featuring both the DDT and HCH data it will have 1 degree of freedom higher than linear models with only one or the other. This will result in higher P-values a higher percentage of the time, making the impact of the high sres far more pronounced than in the single factor linear models.
+
+
+
+
+
+
+
+
+
+
+

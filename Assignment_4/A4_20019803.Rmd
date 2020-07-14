@@ -1,0 +1,207 @@
+---
+title: "A4_20019803"
+author: "Kai Ellis"
+date: "February 5, 2020"
+output: html_document
+---
+
+Hypothesis:
+(H2) Galerucella damage was higher at sites where the biocontrol
+agents had been deliberately released than sites where they had
+not.
+(H3) Damage by beetles reduced the local abundance of L. salicaria
+
+
+1. A code chunk loading the required packages.
+```{r, echo = FALSE}
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(ggfortify)
+library(car)
+```
+*Note:* I am using ggpubr for making the composite plot rather than cowplot. Cowplot's installation was giving me alot of problems, and ggpubr's ggarrange function proved intuitive for creating composite graphs. 
+
+2. Code importing the dataframe and check it with the single most useful data-checking function.
+```{r}
+loosDat <- read.csv("/Users/kelli/Desktop/Biol343/Assignment_4/loosestrife.csv")
+
+summary(loosDat)
+
+#I ran a density transformation here so it wouldn't be forgotten later in the assignment.
+loosDat <- loosDat %>% mutate(logDense = log10(1 + stemsper50m2))
+```
+
+3. Code that makes a graph to evaluate the hypothesis that damage is higher at release than nonrelease sites (H2).
+```{r}
+sumStat  <- loosDat %>% group_by(release) %>% summarise(m = mean(damage, na.rm = T),
+                                            sd = sd(damage, na.rm = T),
+                                            n = sum(!is.na(damage)),
+                                            se = sd/sqrt(n),
+                                            LCI = m - se*(qt(0.975,df = (n-1) )),
+                                            UCI = m + se*(qt(0.975,df = (n-1) )))
+ggplot(data = sumStat) +
+  geom_point( aes(y = m, x = release), size = 5, colour = "red" ) + 
+  geom_errorbar(aes(ymax = UCI, ymin = LCI, x = release ), width = 0.1, lwd =1, colour = "red") +
+  ylab("Damage index") +
+  scale_x_discrete (name ="Release status") +
+  ylim(0,3.5) +
+  theme_minimal()
+
+```
+
+
+Figure 1. The mean and 95% confidence bars for beetle damage index at sites where Galerucella was and was not purposely released.
+
+4. Code that executes a linear model testing for a difference in mean damage between release
+and nonrelease sites (H2).
+```{r}
+lmod <- lm(damage ~ release, loosDat)
+summary(lmod)
+```
+5. Code and a figure testing the normality of residuals assumption for H2.
+```{r}
+H2n <- ggplot(data.frame(residuals(lmod))) +
+  geom_histogram(aes(x = residuals(lmod), y = ..density..), binwidth = 0.4) +
+  labs(x = "Residuals", y ="Density") +
+  stat_function(fun= dnorm, args= list(mean= mean(residuals(lmod)),
+                                       sd = sd(residuals(lmod))),colour = "blue", lwd= 2) +
+  theme_minimal()
+
+#it is worth noting that at higher values of n(), shapiro-wilks tests (SWT) will detect any minor difference from normality, and can result in false rejections of the null hypothesis
+shapiro.test(residuals(lmod))
+
+```
+
+
+6. Code and a figure testing the independence of residuals assumption for H2.
+```{r}
+
+loos.lmod <- loosDat %>% mutate(resids = residuals(lmod), pred = fitted(lmod))
+
+H2i <- ggplot(loos.lmod, aes(x = release, y = resids)) +
+  geom_boxplot() +
+  labs(x = "Release status", y ="Residuals") +
+  theme_minimal() 
+
+leveneTest(resids~release, data = loos.lmod)
+
+secfigure <- ggarrange(H2n,H2i,ncol = 2, nrow = 1, labels = c("A","B"))
+secfigure
+```
+
+
+Figure 2. Assessment of the assumptions that residuals of the multivariate data between beetle damage and release site were A) normally distributed, and B) homoscedastic.
+
+7. A permutation test for H2.
+```{r}
+sum.lmod <- summary(lmod)
+f.obs <- as.numeric(sum.lmod$fstatistic[1] )
+
+nreps  <- 1000
+frand <- numeric(nreps)
+for (i in 1:nreps){
+  rdamage <- sample(loosDat$damage, length(loosDat$damage), replace = F)
+  sumrmod <- summary(rmod <- lm(rdamage~release, data = loosDat))
+  frand[i] <- as.numeric(sumrmod$fstatistic[1])
+  
+}
+mean(frand >= f.obs)
+```
+
+8. A section of text interpreting your results with respect to H2.
+*(H2) Galerucella damage was higher at sites where the biocontrol agents had been deliberately released than sites where they had not.*
+
+Sites where Galerucella was intentionally released had a significant increase in damage index relative to sites without intentional release. This can be seen both in the lack of overlap between the 95% confidence intervals (Figure 1.), and in the significant (p = 0.006947) f-statistic from a general linear model (glm) analysis. 
+
+  Examining the assumptions of normality and independance of residuals required for glm analysis reveals we cannot reject the null hypothesis that the residuals are both normal (p = 0.93) and independant (p = 0.65). 
+  
+  The data supports H2, with glm analysis revealing biocontrol release has a significant positive relation with damage index.
+
+
+9. Code that makes a graph to evaluate H3.
+```{r}
+ggplot(loosDat, aes(y = logDense, x = damage)) + geom_point() + labs(x ="Damage index", y = expression(paste("Stems per ",m^2," (",log[10],")" )))+
+  theme(axis.title.y= element_text(size = 9.5)) + geom_smooth(method = lm, se = FALSE, colour = "blue") + theme_minimal()
+```
+
+
+Figure 3. Stem density (log transformed) plotted against damage index. The blue line is a linear regression representing the effect of damage on stem density.
+
+10. Code that uses linear regression to evaluate H3.
+```{r}
+dmod <- lm(logDense~damage, loosDat)
+summary(dmod)
+
+```
+
+11. Code and a figure testing the normality of residuals assumption for H3.
+```{r}
+H3n <- ggplot(data.frame(residuals(dmod))) +
+  geom_histogram(aes(x = residuals(dmod), y = ..density..), binwidth = 0.2) +
+  stat_function(fun= dnorm, args= list(mean= mean(residuals(dmod)),
+                                       sd = sd(residuals(dmod))),colour = "blue", lwd= 2) +
+  scale_x_continuous (name ="Residuals") +
+  scale_y_continuous (name ="Density") +
+  theme_minimal()
+ shapiro.test(residuals(dmod))
+```
+
+12. Code and a figure testing the independence of residuals assumption for H3.
+```{r}
+loos.dmod <- loosDat %>% mutate(resids = residuals(dmod), pred = fitted(dmod))
+H3i <- ggplot(loos.dmod, aes(x = pred, y = abs(resids))) + 
+  geom_point(size = 3) + 
+  geom_smooth(method = "lm", se = F) +
+  scale_x_continuous (name ="Predicted residuals") +
+  scale_y_continuous (name ="Residuals") +
+  theme_minimal()
+
+summary(lm(abs(resids)~pred, data = loos.dmod))
+
+
+fourfigure <- ggarrange(H3n,H3i,ncol = 2, nrow = 1, labels = c("A","B"))
+fourfigure
+```
+
+
+Figure 4. Assessment of the assumptions that residuals of the multivariate data between plant density and beetle damage was A) normally distributed, and B) homoscedastic.
+
+13. A permutation test for H3.
+```{r}
+sum.dmod <- summary(dmod)
+F.obs <- as.numeric(sum.dmod$fstatistic[1] )
+
+Frand <- numeric(nreps)
+for (i in 1:nreps){
+  rDense <- sample(loosDat$logDense, length(loosDat$logDense), replace = F)
+  sumrmod <- summary(rmod <- lm(rDense~damage, data = loosDat))
+  Frand[i] <- as.numeric(sumrmod$fstatistic[1])
+  
+}
+mean(Frand >= F.obs)
+```
+
+14. A section of text interpreting your results with respect to H3.
+*(H3) Damage by beetles reduced the local abundance of L. salicaria*
+
+
+  Damage from Galerucella beetles has a significant negative assoiation with plant density. This can be seen in the negative regression line that appears on Figure 4, and in the significant (p = 0.0413) f-statistic derived from evaluating the linear regression of density against damage. 
+
+  When analyzing the assumptions of normality and homoscedasticisity of residuals, that are required for glm analysis, it is determined that we cannot reject the null hypothesis that the residuals are normal (p = 0.1722) or independant (p = 0.07703).
+  
+    The data supports H3, with glm analysis revealing damage from Galerucella results in a significant decrease in stem density, a measure of local abundance.
+
+
+15. All figures must have “professional” figure captions. If you are still wondering how to write a proper figure caption please look at the captions of figures in published scientific papers.
+
+16. All figures must be super-pretty, publication-ready and finessed using the scale…() and
+theme() functions in ggplot.
+
+17. The figures that check linear model assumptions for each hypothesis should be put together in
+a composite figure using functions in the cowplot package (i.e. 2 composite figures: one for H2
+and another for H3).
+
+18. All formatting conventions used in assignment #3 apply here.
+
+19. Make sure all code is as concise as possible and neatly organized in code chunks.
