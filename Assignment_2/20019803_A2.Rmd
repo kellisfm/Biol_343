@@ -1,0 +1,117 @@
+---
+title: "20019803_A2"
+output: html_notebook
+---
+
+Data set: study of variation in floral morphology from plants taken from 12 sites found across the range of abronia.
+Abronia are mostly self incompatable (SI), but some can self pollanate (SC).
+
+Hypothesis:
+1) SC appears at the limits of geography where density is low
+
+2) Once SC evolves selection favours reduced pollator attraction.
+
+Notes: graphs must include axis titles and units in sentence case. Must also have a proper figure caption
+
+
+1) import the data and check with the standard 4 functions
+```{r}
+abDat<-read.csv("/Users/kelli/Desktop/Biol343/Assignment_2/AbroniaFloralData.csv")
+
+class(abDat)
+dim(abDat)
+head(abDat)
+tail(abDat)
+
+library(ggplot2)
+library(dplyr)
+```
+
+2)
+ a) use ggplot to make a histogram of **floral face diamater** for both **si**  and **sc** plants.
+  b) Stack these graphs vertically. 
+  c) modify bins to a reasonable resolution.
+```{r}
+ggplot(abDat) + geom_histogram (aes(x=face_diam_mm), binwidth = 0.2) +
+  facet_wrap(~self_inc,nrow=2) +
+  labs(x= "Flower face diameter (mm)", y = "Count") + theme_minimal()
+```
+  Figure 1. Frequency distribution of measurements of flower face diameter across 12 abronia sites. The upper graph represents the 3 selfing compatable flower sites (SC), while the lower graph represents the 9 selfing incompatable (SI) sites. 
+  
+3)
+  Use **dplyr** to calculate the sample size and mean for each of the four traits for si and sc separately. deal appropriatly with missing values
+```{r}
+abDat %>% group_by(self_inc) %>%  summarise (
+    n_ua=sum(!is.na(umbel_angle_deg)), m_ua=mean(umbel_angle_deg, na.rm = T), 
+    n_fn=sum(!is.na(flower_number)), m_fn=mean(flower_number, na.rm = T),
+    n_fd=sum(!is.na(face_diam_mm)), m_fd=mean(face_diam_mm, na.rm = T),
+    n_tl=sum(!is.na(tube_length_mm)), m_tl=mean(tube_length_mm, na.rm = T)  
+   )
+```
+  
+4)
+  graphically contrast the distribution of umbel angle between sc and si sites with boxplots. use different colours for sc vs si and arrange sites by increasing northern latitutes
+
+```{r}
+ggplot(abDat) +
+  geom_boxplot(aes(x = reorder(site, latitude_N, FUN = min), y= umbel_angle_deg, colour= self_inc ) ) +
+  labs(x= "Site", y = "Umbel angle (degrees)") +
+  guides(colour= guide_legend(title=NULL) ) +theme_minimal()
+```
+  Figure 2. The distributions of umbel angle across the 12 sites of abronia. Boxplots are sorted left to right based on increasing northern latititude. sites where abronia were selfing compatable appear in red, while selfing incompatable sites appear in blue
+  
+5)
+  repeat step 4 for the other 3 variables. which variables show largest contrasts between si vs sc.
+  
+Flower number shows limited difference across sites, however tube length and face diameter show significant differences between the selfing compatable and incompatable sites, with selfing compatable plants exhibiting reduced size on both. Interestingly, flower face also expreiences a decline around the middle of abronia's range, albiet not to the extent seen in the selfing compatable populations
+```{r}
+#ggplot(abDat) +
+ # geom_boxplot(aes(x = reorder(site, latitude_N), y= flower_number, colour= self_inc))
+#ggplot(abDat) +
+ # geom_boxplot(aes(x = reorder(site, latitude_N), y= face_diam_mm, colour= self_inc))
+#ggplot(abDat) +
+ # geom_boxplot(aes(x = reorder(site, latitude_N), y= tube_length_mm, colour= self_inc))
+```
+  
+
+6)
+  interpret based on the hypothesis:
+  The boxplots show that flower face diameter and tube length (both in mm), appear to be significantly different between populations with differing reproductive methods. Self compatable plants have much smaller flowers, with much shorter tubes than their incompatable counter parts. Meanwhile umbel angle and flower number appear to be relatively unchanged across all populations, with only a minor reduction in umbel angle in the CGBA and COSA SC populations, and a small drop in flower number in COSA.
+  Overall this data supports our hypothesis: Self fertilizing populations appeared at the most extreme northernly latitudes of the abronia range, with the three most northernly populations becoming self compatable. Additionally, selfing populations experienced a drop in the pollenator attracting traits associated with flower face size and tube length, lending some credence to the idea that as selfing plants do not require pollenation they will lose attractive traits over time. However, not all of our data supported this hypothesis: we would potentially expect selfing plants to show reductions in flower number and umbel angle, neither of which appeared in the data, suggesting these traits either have a very limited investment, or are useful in someway to the selfing populations.
+  
+
+7)
+  With **dplyr** calculate the *site* means for latitude and the 4 floral traits and put these means in a new data frame with sites organized by mating system
+  
+```{r}
+abDatM <- abDat %>% group_by(site,self_inc) %>%  summarise(
+  m_ua = mean(umbel_angle_deg, na.rm = T),
+  m_fn = mean(flower_number, na.rm = T),
+  m_fd = mean(face_diam_mm, na.rm = T),
+  m_tl = mean(tube_length_mm, na.rm = T),
+  m_ln = mean(latitude_N, na.rm = T) )  %>% arrange(self_inc)
+
+```
+  
+  
+8)
+  on one graph plot:
+  a) the relationship between floral face diameter (x) and tube length (y). Use points based on individual plants, with colour based on site. 
+ b) plot a simple linear regression through the data for each site, with the lines coloured by site
+ c) plot the population means for the two floral traits and colour those means by site
+ 
+```{r}
+q=ggplot(abDat, aes(x=face_diam_mm, y = tube_length_mm, colour = site)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(data = abDat, method = lm, se = FALSE) +
+  geom_point(data = abDatM, aes(x=m_fd, y = m_tl, colour = site), size = 4, inherit.aes = F) + theme(legend.title = element_blank()) 
+  q + theme_minimal() + ylab("Tube length (mm)") + xlab("Flower face diameter (mm)")
+  
+ 
+```
+ Figure 3. Flower face diameter plotted against tube length. Sites are highlighted by differing colour, with matching lines representing a linear regression plotted against the site. Large points represent a population mean.
+ 
+9)
+  Test the hypothesis listed in the document: For instance, selection may favour an uncoupling of tube length and face diameter in outcrossing populations because these traits have quite different functions. Tube length determines contact between pollinator and the floral sex organs (anthers and stigma, see the photo above), whereas the face diameter influences the attractiveness of the flower. In selfing populations, however, both traits are relatively unimportant components of overall flower size, which we expect to be reduced in tandem. What prediction emerges from this hypothesis? Does your graph support this prediction?
+  
+  This hypothesis suggests that both the mean flower length and tube length will decrease at a relitivly similar rate in selfing populations. The above plot shows the three selfing populations appear in the bottom corner, suggesting that the traits of tube length and flower have been reduced in tandem in these populations. This supports both the hypothesis that overall flower size is being reduced in these populations, and that these traits will be dropped in tandem.
